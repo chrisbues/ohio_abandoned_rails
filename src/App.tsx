@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type maplibregl from 'maplibre-gl';
 import { MapView } from './map/MapView';
 import { Sidebar } from './components/Sidebar';
-import { BASEMAPS, DEFAULT_BASEMAP_ID } from './config/basemaps';
+import {
+  BASEMAPS,
+  DEFAULT_BASEMAP_ID,
+  DEFAULT_OHIO_HISTORICAL_ID,
+  OHIO_HISTORICAL_LAYERS,
+} from './config/basemaps';
 import { RAIL_OVERLAYS } from './config/railLayers';
 import { boundsAreaDeg, fetchRail, type MapBounds, type RailCollection } from './data/overpass';
 import { loadWaybackReleases, type WaybackRelease } from './data/wayback';
@@ -29,6 +34,8 @@ export default function App() {
   const [waybackReleases, setWaybackReleases] = useState<WaybackRelease[] | null>(null);
   const [waybackLoading, setWaybackLoading] = useState(false);
   const [waybackIndex, setWaybackIndex] = useState(0);
+
+  const [ohioHistoricalId, setOhioHistoricalId] = useState(DEFAULT_OHIO_HISTORICAL_ID);
 
   const [railData, setRailData] = useState<RailCollection>(EMPTY_FC);
   const [railLoading, setRailLoading] = useState(false);
@@ -58,8 +65,18 @@ export default function App() {
       .finally(() => setWaybackLoading(false));
   }, [isWayback, waybackReleases, waybackLoading]);
 
-  const waybackTemplate =
-    isWayback && waybackReleases ? waybackReleases[waybackIndex]?.template ?? null : null;
+  // Resolve tiles for basemaps whose template is chosen at runtime.
+  const ohioHistorical =
+    OHIO_HISTORICAL_LAYERS.find((l) => l.id === ohioHistoricalId) ?? OHIO_HISTORICAL_LAYERS[0];
+  let dynamicTiles: string[] | null = null;
+  let dynamicMaxzoom: number | null = null;
+  if (isWayback && waybackReleases) {
+    const template = waybackReleases[waybackIndex]?.template;
+    dynamicTiles = template ? [template] : null;
+  } else if (basemap.type === 'ohio-historical') {
+    dynamicTiles = ohioHistorical.tiles;
+    dynamicMaxzoom = ohioHistorical.maxzoom;
+  }
 
   const onMapReady = useCallback((map: maplibregl.Map) => {
     mapRef.current = map;
@@ -136,6 +153,9 @@ export default function App() {
         waybackIndex={waybackIndex}
         waybackLoading={waybackLoading}
         onWaybackIndexChange={setWaybackIndex}
+        isOhioHistorical={basemap.type === 'ohio-historical'}
+        ohioHistoricalId={ohioHistoricalId}
+        onOhioHistoricalChange={setOhioHistoricalId}
         showReference={showReference}
         onToggleReference={setShowReference}
         overlayVisibility={overlayVisibility}
@@ -151,7 +171,8 @@ export default function App() {
       />
       <MapView
         basemap={basemap}
-        waybackTemplate={waybackTemplate}
+        dynamicTiles={dynamicTiles}
+        dynamicMaxzoom={dynamicMaxzoom}
         showReference={showReference}
         overlayVisibility={overlayVisibility}
         railData={railData}

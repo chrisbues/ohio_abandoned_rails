@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import maplibregl from 'maplibre-gl';
+import maplibregl, { type ExpressionSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Basemap } from '../config/basemaps';
 import { REFERENCE_OVERLAY } from '../config/basemaps';
 import { RAIL_OVERLAYS } from '../config/railLayers';
-import { ORDC_ATTRIBUTION, ORDC_LAYERS, ORDC_POPUP_FIELDS } from '../config/ordc';
+import { ORDC_ATTRIBUTION, ORDC_LAYERS, type OrdcLayerDef } from '../config/ordc';
 import type { RailCollection } from '../data/overpass';
 import type { OrdcCollection } from '../data/ordc';
 
@@ -18,8 +18,12 @@ const EMPTY_FC: RailCollection = { type: 'FeatureCollection', features: [] };
 
 interface Props {
   basemap: Basemap;
-  /** Tile template to use when basemap.type === 'wayback'. */
-  waybackTemplate: string | null;
+  /**
+   * Tiles resolved at runtime for basemaps without a fixed template
+   * (Esri Wayback release, Ohio historical vintage).
+   */
+  dynamicTiles: string[] | null;
+  dynamicMaxzoom: number | null;
   showReference: boolean;
   overlayVisibility: Record<string, boolean>;
   railData: RailCollection;
@@ -31,7 +35,8 @@ interface Props {
 
 export function MapView({
   basemap,
-  waybackTemplate,
+  dynamicTiles,
+  dynamicMaxzoom,
   showReference,
   overlayVisibility,
   railData,
@@ -65,37 +70,39 @@ export function MapView({
     );
 
     map.on('load', () => {
-      // ORDC statewide layers: drawn beneath the OSM rail layers so live OSM
-      // edits stay on top. One source + line layer per ORDC layer.
+      // ODOT/ORDC statewide layers: lines drawn beneath the OSM rail layers so
+      // live OSM edits stay on top; crossing points drawn above everything.
       for (const ordc of ORDC_LAYERS) {
         map.addSource(ordc.key, {
           type: 'geojson',
           data: EMPTY_FC,
           attribution: ORDC_ATTRIBUTION,
         });
-        map.addLayer({
-          id: ordc.key,
-          type: 'line',
-          source: ordc.key,
-          layout: {
-            'line-join': 'round',
-            'line-cap': 'round',
-            visibility: 'none',
-          },
-          paint: {
-            'line-color': ordc.color,
-            'line-width': [
-              'interpolate',
-              ['linear'],
-              ['zoom'],
-              7,
-              ordc.width * 0.6,
-              14,
-              ordc.width * 1.6,
-            ],
-            ...(ordc.dash ? { 'line-dasharray': ordc.dash } : {}),
-          },
-        });
+        if (ordc.kind === 'line') {
+          map.addLayer({
+            id: ordc.key,
+            type: 'line',
+            source: ordc.key,
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round',
+              visibility: 'none',
+            },
+            paint: {
+              'line-color': ordc.color,
+              'line-width': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                7,
+                ordc.width * 0.6,
+                14,
+                ordc.width * 1.6,
+              ],
+              ...(ordc.dash ? { 'line-dasharray': ordc.dash } : {}),
+            },
+          });
+        }
       }
 
       // Rail source + one line layer per overlay group, drawn above the basemap.
@@ -119,24 +126,48 @@ export function MapView({
         });
       }
 
-      // Click a rail line to inspect it: OSM tags for Overpass layers,
-      // ORDC attributes for the official layers. OSM lines draw on top, so
-      // they win when both are under the cursor.
+      // Crossing points render above the line layers (added after them).
+      for (const ordc of ORDC_LAYERS) {
+        if (ordc.kind !== 'point') continue;
+        const pc = ordc.pointColorField;
+        map.addLayer({
+          id: ordc.key,
+          type: 'circle',
+          source: ordc.key,
+          layout: { visibility: 'none' },
+          paint: {
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 1.5, 12, 4, 16, 7],
+            'circle-color': pc
+              ? (['match', ['get', pc.field], ...Object.entries(pc.values).flat(), pc.fallback] as unknown as ExpressionSpecification)
+              : ordc.color,
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 8, 0.3, 14, 1],
+            'circle-opacity': 0.9,
+          },
+        });
+      }
+
+      // Click to inspect: crossing points first (smallest target, drawn on
+      // top), then OSM lines, then ORDC lines beneath them.
       const osmLayerIds = RAIL_OVERLAYS.map((o) => o.key);
-      const ordcLayerIds = ORDC_LAYERS.map((o) => o.key);
+      const ordcPointIds = ORDC_LAYERS.filter((o) => o.kind === 'point').map((o) => o.key);
+      const ordcLineIds = ORDC_LAYERS.filter((o) => o.kind === 'line').map((o) => o.key);
+      const ordcByKey = new Map<string, OrdcLayerDef>(ORDC_LAYERS.map((o) => [o.key, o]));
       const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '320px' });
       map.on('click', (e) => {
-        const osmFeats = map.queryRenderedFeatures(e.point, { layers: osmLayerIds });
-        if (osmFeats.length) {
-          popup.setLngLat(e.lngLat).setHTML(railPopupHtml(osmFeats[0].properties)).addTo(map);
+        for (const layers of [ordcPointIds, osmLayerIds, ordcLineIds]) {
+          const feats = map.queryRenderedFeatures(e.point, { layers });
+          if (!feats.length) continue;
+          const feat = feats[0];
+          const def = ordcByKey.get(feat.layer.id);
+          const html = def
+            ? ordcPopupHtml(def, feat.properties)
+            : railPopupHtml(feat.properties);
+          popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
           return;
         }
-        const ordcFeats = map.queryRenderedFeatures(e.point, { layers: ordcLayerIds });
-        if (ordcFeats.length) {
-          popup.setLngLat(e.lngLat).setHTML(ordcPopupHtml(ordcFeats[0].properties)).addTo(map);
-        }
       });
-      for (const id of [...osmLayerIds, ...ordcLayerIds]) {
+      for (const id of [...osmLayerIds, ...ordcPointIds, ...ordcLineIds]) {
         map.on('mouseenter', id, () => (map.getCanvas().style.cursor = 'pointer'));
         map.on('mouseleave', id, () => (map.getCanvas().style.cursor = ''));
       }
@@ -158,13 +189,8 @@ export function MapView({
     const map = mapRef.current;
     if (!map || !ready) return;
 
-    const tiles =
-      basemap.type === 'wayback'
-        ? waybackTemplate
-          ? [waybackTemplate]
-          : null
-        : basemap.tiles ?? null;
-    if (!tiles) return; // wayback releases not loaded yet
+    const tiles = basemap.tiles ?? dynamicTiles;
+    if (!tiles) return; // dynamic tiles not resolved yet (e.g. wayback list loading)
 
     if (map.getLayer(BASEMAP_LAYER)) map.removeLayer(BASEMAP_LAYER);
     if (map.getSource(BASEMAP_SOURCE)) map.removeSource(BASEMAP_SOURCE);
@@ -173,7 +199,7 @@ export function MapView({
       type: 'raster',
       tiles,
       tileSize: 256,
-      maxzoom: basemap.maxzoom,
+      maxzoom: dynamicMaxzoom ?? basemap.maxzoom,
       attribution: basemap.attribution,
     });
 
@@ -183,7 +209,7 @@ export function MapView({
       { id: BASEMAP_LAYER, type: 'raster', source: BASEMAP_SOURCE },
       firstLayer,
     );
-  }, [ready, basemap, waybackTemplate]);
+  }, [ready, basemap, dynamicTiles, dynamicMaxzoom]);
 
   // ---- Toggle the reference (roads/labels) overlay ----
   useEffect(() => {
@@ -283,11 +309,12 @@ function railPopupHtml(props: Record<string, unknown> | null): string {
   return `<div class="rail-popup"><table>${body}</table>${osmLink}</div>`;
 }
 
-function ordcPopupHtml(props: Record<string, unknown> | null): string {
+function ordcPopupHtml(def: OrdcLayerDef, props: Record<string, unknown> | null): string {
   if (!props) return '';
-  const rows = ORDC_POPUP_FIELDS.filter(
-    ([field]) => props[field] !== null && props[field] !== undefined && props[field] !== '',
-  )
+  const rows = def.popupFields
+    .filter(
+      ([field]) => props[field] !== null && props[field] !== undefined && props[field] !== '',
+    )
     .map(([field, label]) => `<tr><th>${label}</th><td>${esc(String(props[field]))}</td></tr>`)
     .join('');
   return `<div class="rail-popup"><table>${rows}</table><span class="popup-source">Source: ORDC / ODOT</span></div>`;
