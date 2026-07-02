@@ -1,4 +1,4 @@
-import { BASEMAPS } from '../config/basemaps';
+import { BASEMAPS, OHIO_HISTORICAL_LAYERS } from '../config/basemaps';
 import { RAIL_OVERLAYS } from '../config/railLayers';
 import { ORDC_LAYERS } from '../config/ordc';
 import type { WaybackRelease } from '../data/wayback';
@@ -12,6 +12,10 @@ interface Props {
   waybackIndex: number;
   waybackLoading: boolean;
   onWaybackIndexChange: (index: number) => void;
+
+  isOhioHistorical: boolean;
+  ohioHistoricalId: string;
+  onOhioHistoricalChange: (id: string) => void;
 
   showReference: boolean;
   onToggleReference: (value: boolean) => void;
@@ -39,6 +43,9 @@ export function Sidebar(props: Props) {
     waybackIndex,
     waybackLoading,
     onWaybackIndexChange,
+    isOhioHistorical,
+    ohioHistoricalId,
+    onOhioHistoricalChange,
     showReference,
     onToggleReference,
     overlayVisibility,
@@ -109,6 +116,32 @@ export function Sidebar(props: Props) {
           </div>
         )}
 
+        {isOhioHistorical && (
+          <div className="wayback">
+            <div className="wayback-date">
+              <span className="wayback-label">Vintage</span>
+              <strong>
+                {OHIO_HISTORICAL_LAYERS.find((l) => l.id === ohioHistoricalId)?.era}
+              </strong>
+            </div>
+            <select
+              className="vintage-select"
+              value={ohioHistoricalId}
+              onChange={(e) => onOhioHistoricalChange(e.target.value)}
+            >
+              {OHIO_HISTORICAL_LAYERS.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+            <p className="hint">
+              Oldest first. The ★ 2006 OSIP leaf-off flight and the historic topos are best for
+              spotting abandoned grades.
+            </p>
+          </div>
+        )}
+
         <label className="check-row reference-toggle">
           <input
             type="checkbox"
@@ -129,14 +162,22 @@ export function Sidebar(props: Props) {
                 checked={ordcVisibility[l.key] ?? false}
                 onChange={(e) => onToggleOrdc(l.key, e.target.checked)}
               />
-              <span
-                className="swatch"
-                style={{
-                  background: l.dash
-                    ? `repeating-linear-gradient(90deg, ${l.color} 0 6px, transparent 6px 10px)`
-                    : l.color,
-                }}
-              />
+              {l.kind === 'point' ? (
+                <span className="swatch swatch-dots">
+                  {Object.values(l.pointColorField?.values ?? { a: l.color }).map((c, i) => (
+                    <span key={i} className="dot" style={{ background: c }} />
+                  ))}
+                </span>
+              ) : (
+                <span
+                  className="swatch"
+                  style={{
+                    background: l.dash
+                      ? `repeating-linear-gradient(90deg, ${l.color} 0 6px, transparent 6px 10px)`
+                      : l.color,
+                  }}
+                />
+              )}
               <span>
                 {l.label}
                 {ordcLoading[l.key] && <em className="loading-note"> loading…</em>}

@@ -1,5 +1,5 @@
 import type { FeatureCollection, Geometry } from 'geojson';
-import { ORDC_SERVICE_BASE, type OrdcLayerDef } from '../config/ordc';
+import type { OrdcLayerDef } from '../config/ordc';
 
 export type OrdcCollection = FeatureCollection<Geometry, Record<string, unknown>>;
 
@@ -19,10 +19,10 @@ export function fetchOrdcLayer(def: OrdcLayerDef): Promise<OrdcCollection> {
     where: '1=1',
     outFields: def.outFields.join(','),
     outSR: '4326',
-    geometryPrecision: '5',
+    geometryPrecision: def.kind === 'point' ? '6' : '5',
     f: 'geojson',
   });
-  const url = `${ORDC_SERVICE_BASE}/${def.layerId}/query?${params}`;
+  const url = `${def.layerUrl}/query?${params}`;
 
   const promise = (async () => {
     try {
