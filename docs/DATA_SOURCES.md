@@ -20,7 +20,8 @@ and how/whether it can be wired into the app.
 | **OpenStreetMap** (`railway=rail/abandoned/disused/razed/construction`) via [Overpass API](https://overpass-api.de/) | 🟢 | Primary live source. Tags often include `name`, `operator`, `old_railway:operator`, `start_date`, `end_date`. The single richest crowd-sourced abandoned-rail dataset. |
 | **FRA National Rail Network** ([BTS / DOT](https://geodata.bts.gov/datasets/usdot::north-american-rail-network-lines)) | 🟡 | Authoritative *active* network as a feature service / shapefile. Good cross-check for current lines and owners (railroad RROWNER fields). |
 | **USGS National Map — Transportation (TNM)** | 🟡 | Rail features in the National Map; abandoned grades sometimes retained. |
-| **Ohio Rail Development Commission (ORDC)** | 🔵 | State agency; system maps and active-line ownership. Maps are mostly PDF — good for manual curation. |
+| **Ohio Rail Development Commission (ORDC) Rail Map services** | 🟢 | The [ORDC Rail Map](https://gis3.dot.state.oh.us/OhioRail/) is backed by a public ArcGIS REST service (`odotgis.dot.state.oh.us/arcgis/rest/services/RAIL/Rail_WebMap/MapServer`) with CORS + GeoJSON support. Layer 5 = **Abandoned Rail Lines** (~2,600 segments, with `ABANDONMENT_YEAR`, `ROW_OWNER1/2`, `HERITAGE_RR`); layer 2 = **Active Rail Lines** (operator, STB class, trains/day, Amtrak). Integrated as toggleable statewide overlays. |
+| **ODOT Railroad Crossing Inventory** (`tims.dot.state.oh.us/ags/rest/services/Assets/Rail_Crossing_Inventory`) | 🟡 | Point layer of grade crossings from the same webmap; candidate future overlay. |
 | **USGS Historical Topographic Maps** ([topoView](https://ngmdb.usgs.gov/topoview/)) | 🟡 | Scanned quads back to the 1880s; abandoned lines appear as they existed. Available as georeferenced layers. |
 | **Abandoned Rails / abandonedrails.com** | 🔵 | Community-curated line histories by state. Good for narrative + endpoints. |
 | **Wikipedia "List of Ohio railroads" / defunct railroads** | 🔵 | Company lineage, merger history, reporting marks. |
@@ -33,19 +34,22 @@ and how/whether it can be wired into the app.
 | **Esri Wayback Imagery** | 🟢 | Every released version of the World Imagery mosaic, scrubbable by date. Config: `https://s3-us-west-2.amazonaws.com/config.maptiles.arcgis.com/waybackconfig.json`. |
 | **Esri World Imagery (current)** | 🟢 | Latest high-res aerial mosaic. |
 | **USGS Imagery Topo / USGS Topo** | 🟢 | National Map basemaps; topo labels over imagery. |
-| **OhioView / OSIP (Ohio Statewide Imagery Program)** via [OGRIP](https://ogrip.oit.ohio.gov/) | 🟡 | State orthoimagery, including historical OSIP flights (2006/2007 leaf-off is excellent for spotting grades). Served via ArcGIS image services. |
+| **OSIP (Ohio Statewide Imagery Program)** most-current cache (`maps.ohio.gov/image/rest/services/osip_most_current_cache`) | 🟢 | The state's own high-res orthophotos as a standard Web Mercator tile cache; integrated as a basemap. Historical OSIP flights (2006/2007 leaf-off is excellent for spotting grades) remain 🟡 candidates. |
 | **USGS EarthExplorer** ([earthexplorer.usgs.gov](https://earthexplorer.usgs.gov/)) | 🔵 | Historical aerial photography (1930s+), declassified satellite. Download + georeference workflow. |
 | **NETR Historic Aerials** ([historicaerials.com](https://www.historicaerials.com/)) | 🔴 | Excellent historical aerials/topos but commercial; not redistributable. Good manual cross-reference. |
 | **Google Earth Pro historical imagery** | 🔴 | Best-in-class time slider but not embeddable via terms. Manual reference. |
 
 ## How the app currently uses these
 
+- **Official ORDC layers** — statewide **Abandoned Rail Lines** and **Active Rail
+  Lines** fetched as GeoJSON straight from the ORDC/ODOT ArcGIS service, with
+  per-segment popups (abandonment year, ROW ownership, operator, STB class).
 - **Rail overlays** are fetched live from **OpenStreetMap/Overpass** for the current
   map viewport (the "Load rail in this view" button), classified into active, disused,
   abandoned, razed, and construction.
 - **Base imagery** offers Esri current satellite, **Esri Wayback** (historical, with a
-  date slider), USGS Imagery+Topo, USGS Topo, and OpenStreetMap, plus an optional
-  roads/labels reference overlay.
+  date slider), **Ohio OSIP statewide orthos**, USGS Imagery+Topo, USGS Topo, and
+  OpenStreetMap, plus an optional roads/labels reference overlay.
 
 ## Candidate next integrations
 

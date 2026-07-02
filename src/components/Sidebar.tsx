@@ -1,5 +1,6 @@
 import { BASEMAPS } from '../config/basemaps';
 import { RAIL_OVERLAYS } from '../config/railLayers';
+import { ORDC_LAYERS } from '../config/ordc';
 import type { WaybackRelease } from '../data/wayback';
 
 interface Props {
@@ -17,6 +18,11 @@ interface Props {
 
   overlayVisibility: Record<string, boolean>;
   onToggleOverlay: (key: string, value: boolean) => void;
+
+  ordcVisibility: Record<string, boolean>;
+  ordcLoading: Record<string, boolean>;
+  ordcError: Record<string, string>;
+  onToggleOrdc: (key: string, value: boolean) => void;
 
   onLoadRail: () => void;
   railLoading: boolean;
@@ -37,6 +43,10 @@ export function Sidebar(props: Props) {
     onToggleReference,
     overlayVisibility,
     onToggleOverlay,
+    ordcVisibility,
+    ordcLoading,
+    ordcError,
+    onToggleOrdc,
     onLoadRail,
     railLoading,
     railMessage,
@@ -110,7 +120,45 @@ export function Sidebar(props: Props) {
       </section>
 
       <section className="panel">
-        <h2>Rail layers</h2>
+        <h2>Official ORDC layers</h2>
+        <div className="check-list">
+          {ORDC_LAYERS.map((l) => (
+            <label key={l.key} className="check-row" title={l.description}>
+              <input
+                type="checkbox"
+                checked={ordcVisibility[l.key] ?? false}
+                onChange={(e) => onToggleOrdc(l.key, e.target.checked)}
+              />
+              <span
+                className="swatch"
+                style={{
+                  background: l.dash
+                    ? `repeating-linear-gradient(90deg, ${l.color} 0 6px, transparent 6px 10px)`
+                    : l.color,
+                }}
+              />
+              <span>
+                {l.label}
+                {ordcLoading[l.key] && <em className="loading-note"> loading…</em>}
+              </span>
+            </label>
+          ))}
+        </div>
+        {Object.entries(ordcError)
+          .filter(([, msg]) => msg)
+          .map(([key, msg]) => (
+            <p key={key} className="hint error">
+              {msg}
+            </p>
+          ))}
+        <p className="hint">
+          Statewide data straight from the Ohio Rail Development Commission's ArcGIS service —
+          abandoned lines include abandonment year and right-of-way ownership.
+        </p>
+      </section>
+
+      <section className="panel">
+        <h2>Rail layers (OpenStreetMap)</h2>
         <div className="check-list">
           {RAIL_OVERLAYS.map((ov) => (
             <label key={ov.key} className="check-row" title={ov.description}>

@@ -4,7 +4,9 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Basemap } from '../config/basemaps';
 import { REFERENCE_OVERLAY } from '../config/basemaps';
 import { RAIL_OVERLAYS } from '../config/railLayers';
+import { ORDC_ATTRIBUTION, ORDC_LAYERS, ORDC_POPUP_FIELDS } from '../config/ordc';
 import type { RailCollection } from '../data/overpass';
+import type { OrdcCollection } from '../data/ordc';
 
 const BASEMAP_SOURCE = 'basemap';
 const BASEMAP_LAYER = 'basemap-layer';
@@ -21,6 +23,9 @@ interface Props {
   showReference: boolean;
   overlayVisibility: Record<string, boolean>;
   railData: RailCollection;
+  /** Statewide ORDC layer data, keyed by layer key; null until loaded. */
+  ordcData: Record<string, OrdcCollection | null>;
+  ordcVisibility: Record<string, boolean>;
   onMapReady: (map: maplibregl.Map) => void;
 }
 
@@ -30,6 +35,8 @@ export function MapView({
   showReference,
   overlayVisibility,
   railData,
+  ordcData,
+  ordcVisibility,
   onMapReady,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -58,6 +65,39 @@ export function MapView({
     );
 
     map.on('load', () => {
+      // ORDC statewide layers: drawn beneath the OSM rail layers so live OSM
+      // edits stay on top. One source + line layer per ORDC layer.
+      for (const ordc of ORDC_LAYERS) {
+        map.addSource(ordc.key, {
+          type: 'geojson',
+          data: EMPTY_FC,
+          attribution: ORDC_ATTRIBUTION,
+        });
+        map.addLayer({
+          id: ordc.key,
+          type: 'line',
+          source: ordc.key,
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round',
+            visibility: 'none',
+          },
+          paint: {
+            'line-color': ordc.color,
+            'line-width': [
+              'interpolate',
+              ['linear'],
+              ['zoom'],
+              7,
+              ordc.width * 0.6,
+              14,
+              ordc.width * 1.6,
+            ],
+            ...(ordc.dash ? { 'line-dasharray': ordc.dash } : {}),
+          },
+        });
+      }
+
       // Rail source + one line layer per overlay group, drawn above the basemap.
       map.addSource(RAIL_SOURCE, { type: 'geojson', data: EMPTY_FC });
       for (const ov of RAIL_OVERLAYS) {
@@ -79,21 +119,26 @@ export function MapView({
         });
       }
 
-      // Click a rail line to inspect its OSM tags.
+      // Click a rail line to inspect it: OSM tags for Overpass layers,
+      // ORDC attributes for the official layers. OSM lines draw on top, so
+      // they win when both are under the cursor.
+      const osmLayerIds = RAIL_OVERLAYS.map((o) => o.key);
+      const ordcLayerIds = ORDC_LAYERS.map((o) => o.key);
       const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '320px' });
       map.on('click', (e) => {
-        const feats = map.queryRenderedFeatures(e.point, {
-          layers: RAIL_OVERLAYS.map((o) => o.key),
-        });
-        if (!feats.length) return;
-        popup.setLngLat(e.lngLat).setHTML(railPopupHtml(feats[0].properties)).addTo(map);
+        const osmFeats = map.queryRenderedFeatures(e.point, { layers: osmLayerIds });
+        if (osmFeats.length) {
+          popup.setLngLat(e.lngLat).setHTML(railPopupHtml(osmFeats[0].properties)).addTo(map);
+          return;
+        }
+        const ordcFeats = map.queryRenderedFeatures(e.point, { layers: ordcLayerIds });
+        if (ordcFeats.length) {
+          popup.setLngLat(e.lngLat).setHTML(ordcPopupHtml(ordcFeats[0].properties)).addTo(map);
+        }
       });
-      map.on('mouseenter', RAIL_OVERLAYS[0].key, () => {
-        map.getCanvas().style.cursor = 'pointer';
-      });
-      for (const ov of RAIL_OVERLAYS) {
-        map.on('mouseenter', ov.key, () => (map.getCanvas().style.cursor = 'pointer'));
-        map.on('mouseleave', ov.key, () => (map.getCanvas().style.cursor = ''));
+      for (const id of [...osmLayerIds, ...ordcLayerIds]) {
+        map.on('mouseenter', id, () => (map.getCanvas().style.cursor = 'pointer'));
+        map.on('mouseleave', id, () => (map.getCanvas().style.cursor = ''));
       }
 
       setReady(true);
@@ -154,8 +199,9 @@ export function MapView({
         maxzoom: REFERENCE_OVERLAY.maxzoom,
         attribution: REFERENCE_OVERLAY.attribution,
       });
-      // Above basemap, below the first rail layer.
-      const beforeId = RAIL_OVERLAYS.find((o) => map.getLayer(o.key))?.key;
+      // Above basemap, below the lowest rail line layer (ORDC layers sit
+      // beneath the OSM overlays).
+      const beforeId = [...ORDC_LAYERS, ...RAIL_OVERLAYS].find((o) => map.getLayer(o.key))?.key;
       map.addLayer({ id: REFERENCE_LAYER, type: 'raster', source: REFERENCE_SOURCE }, beforeId);
     } else if (!showReference && exists) {
       if (map.getLayer(REFERENCE_LAYER)) map.removeLayer(REFERENCE_LAYER);
@@ -181,6 +227,29 @@ export function MapView({
       map.setLayoutProperty(ov.key, 'visibility', visible ? 'visible' : 'none');
     }
   }, [ready, overlayVisibility]);
+
+  // ---- Push ORDC data into sources ----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    for (const ordc of ORDC_LAYERS) {
+      const fc = ordcData[ordc.key];
+      if (!fc) continue;
+      const src = map.getSource(ordc.key) as maplibregl.GeoJSONSource | undefined;
+      src?.setData(fc);
+    }
+  }, [ready, ordcData]);
+
+  // ---- Apply ORDC visibility ----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    for (const ordc of ORDC_LAYERS) {
+      if (!map.getLayer(ordc.key)) continue;
+      const visible = ordcVisibility[ordc.key] ?? false;
+      map.setLayoutProperty(ordc.key, 'visibility', visible ? 'visible' : 'none');
+    }
+  }, [ready, ordcVisibility]);
 
   return <div ref={containerRef} className="map-container" />;
 }
@@ -212,4 +281,14 @@ function railPopupHtml(props: Record<string, unknown> | null): string {
     ? `<a href="https://www.openstreetmap.org/way/${props.id}" target="_blank" rel="noopener">View on OpenStreetMap →</a>`
     : '';
   return `<div class="rail-popup"><table>${body}</table>${osmLink}</div>`;
+}
+
+function ordcPopupHtml(props: Record<string, unknown> | null): string {
+  if (!props) return '';
+  const rows = ORDC_POPUP_FIELDS.filter(
+    ([field]) => props[field] !== null && props[field] !== undefined && props[field] !== '',
+  )
+    .map(([field, label]) => `<tr><th>${label}</th><td>${esc(String(props[field]))}</td></tr>`)
+    .join('');
+  return `<div class="rail-popup"><table>${rows}</table><span class="popup-source">Source: ORDC / ODOT</span></div>`;
 }
