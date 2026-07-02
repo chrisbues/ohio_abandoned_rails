@@ -34,6 +34,17 @@ export const BASEMAPS: Basemap[] = [
     note: 'Scrub through past versions of the World Imagery mosaic by capture date.',
   },
   {
+    id: 'osip',
+    label: 'Ohio OSIP Imagery (statewide)',
+    type: 'xyz',
+    tiles: [
+      'https://maps.ohio.gov/image/rest/services/osip_most_current_cache/MapServer/tile/{z}/{y}/{x}',
+    ],
+    attribution: 'Imagery &copy; State of Ohio / OGRIP OSIP',
+    maxzoom: 19,
+    note: "Ohio Statewide Imagery Program — the state's own high-resolution orthophotos.",
+  },
+  {
     id: 'usgs-imagery-topo',
     label: 'USGS Imagery + Topo',
     type: 'xyz',

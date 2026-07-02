@@ -6,6 +6,8 @@ import { BASEMAPS, DEFAULT_BASEMAP_ID } from './config/basemaps';
 import { RAIL_OVERLAYS } from './config/railLayers';
 import { boundsAreaDeg, fetchRail, type MapBounds, type RailCollection } from './data/overpass';
 import { loadWaybackReleases, type WaybackRelease } from './data/wayback';
+import { ORDC_LAYERS } from './config/ordc';
+import { fetchOrdcLayer, type OrdcCollection } from './data/ordc';
 import './App.css';
 
 const EMPTY_FC: RailCollection = { type: 'FeatureCollection', features: [] };
@@ -31,6 +33,11 @@ export default function App() {
   const [railData, setRailData] = useState<RailCollection>(EMPTY_FC);
   const [railLoading, setRailLoading] = useState(false);
   const [railMessage, setRailMessage] = useState('');
+
+  const [ordcData, setOrdcData] = useState<Record<string, OrdcCollection | null>>({});
+  const [ordcVisibility, setOrdcVisibility] = useState<Record<string, boolean>>({});
+  const [ordcLoading, setOrdcLoading] = useState<Record<string, boolean>>({});
+  const [ordcError, setOrdcError] = useState<Record<string, string>>({});
 
   const basemap = useMemo(
     () => BASEMAPS.find((b) => b.id === basemapId) ?? BASEMAPS[0],
@@ -60,6 +67,30 @@ export default function App() {
 
   const onToggleOverlay = useCallback((key: string, value: boolean) => {
     setOverlayVisibility((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  // Toggling an ORDC layer on fetches the statewide dataset on first use.
+  const onToggleOrdc = useCallback((key: string, value: boolean) => {
+    setOrdcVisibility((prev) => ({ ...prev, [key]: value }));
+    if (!value) return;
+
+    const def = ORDC_LAYERS.find((l) => l.key === key);
+    if (!def) return;
+    setOrdcError((prev) => ({ ...prev, [key]: '' }));
+    setOrdcData((prev) => {
+      if (prev[key]) return prev; // already loaded
+      setOrdcLoading((l) => ({ ...l, [key]: true }));
+      fetchOrdcLayer(def)
+        .then((fc) => setOrdcData((d) => ({ ...d, [key]: fc })))
+        .catch((err) =>
+          setOrdcError((e) => ({
+            ...e,
+            [key]: err instanceof Error ? err.message : 'load failed',
+          })),
+        )
+        .finally(() => setOrdcLoading((l) => ({ ...l, [key]: false })));
+      return prev;
+    });
   }, []);
 
   const onLoadRail = useCallback(async () => {
@@ -109,6 +140,10 @@ export default function App() {
         onToggleReference={setShowReference}
         overlayVisibility={overlayVisibility}
         onToggleOverlay={onToggleOverlay}
+        ordcVisibility={ordcVisibility}
+        ordcLoading={ordcLoading}
+        ordcError={ordcError}
+        onToggleOrdc={onToggleOrdc}
         onLoadRail={onLoadRail}
         railLoading={railLoading}
         railMessage={railMessage}
@@ -120,6 +155,8 @@ export default function App() {
         showReference={showReference}
         overlayVisibility={overlayVisibility}
         railData={railData}
+        ordcData={ordcData}
+        ordcVisibility={ordcVisibility}
         onMapReady={onMapReady}
       />
     </div>
