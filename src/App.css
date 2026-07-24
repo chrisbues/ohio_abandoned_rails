@@ -4,9 +4,50 @@
   height: 100%;
 }
 
+.map-wrap {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+}
+
 .map-container {
   height: 100%;
   width: 100%;
+}
+
+.geo-error {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  max-width: min(90%, 420px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-left: 3px solid #f85149;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.geo-error button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  margin-left: auto;
+}
+.geo-error button:hover {
+  color: var(--text);
 }
 
 /* ---------- Sidebar ---------- */

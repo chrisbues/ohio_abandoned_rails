@@ -21,6 +21,9 @@ machine-readable pieces into one interactive map and catalogs the rest for resea
 - 🔍 **Click any line** to inspect its OSM tags (operator, former operator, open/close
   dates) with a link back to OpenStreetMap.
 - 🗺 **Roads & place-label overlay** for context on top of satellite imagery.
+- 📍 **Show my location** — the map can track your live GPS position with an accuracy
+  circle, for comparing where you're standing against a mapped right-of-way in the field.
+  (Requires a secure context: HTTPS or `localhost`.)
 
 It is a **pure static web app** — no backend. All data comes from public APIs and tile
 services at runtime, so it deploys for free to GitHub Pages.
