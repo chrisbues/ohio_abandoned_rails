@@ -47,6 +47,7 @@ export function MapView({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [ready, setReady] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
 
   // ---- Initialize the map once ----
   useEffect(() => {
@@ -63,6 +64,27 @@ export function MapView({
     mapRef.current = map;
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-left');
+
+    // Show/follow the user's position — useful for standing on an actual grade
+    // in the field and comparing it against the mapped right-of-way.
+    const geolocate = new maplibregl.GeolocateControl({
+      positionOptions: { enableHighAccuracy: true, timeout: 10000 },
+      trackUserLocation: true,
+      showUserLocation: true,
+      showAccuracyCircle: true,
+    });
+    map.addControl(geolocate, 'top-left');
+    geolocate.on('error', (err: GeolocationPositionError) => {
+      setGeoError(
+        err.code === 1
+          ? 'Location permission denied — enable it in your browser to show your position.'
+          : err.code === 3
+            ? 'Timed out getting your location. Try again with a clearer view of the sky.'
+            : 'Could not determine your location.',
+      );
+    });
+    geolocate.on('geolocate', () => setGeoError(null));
+
     map.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-left');
     map.addControl(
       new maplibregl.AttributionControl({ compact: true }),
@@ -277,7 +299,19 @@ export function MapView({
     }
   }, [ready, ordcVisibility]);
 
-  return <div ref={containerRef} className="map-container" />;
+  return (
+    <div className="map-wrap">
+      <div ref={containerRef} className="map-container" />
+      {geoError && (
+        <div className="geo-error" role="status">
+          {geoError}
+          <button aria-label="Dismiss" onClick={() => setGeoError(null)}>
+            ×
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function esc(s: string): string {
